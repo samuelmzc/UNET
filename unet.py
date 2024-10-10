@@ -19,8 +19,10 @@ class DoubleConv2D(torch.nn.Module):
         return self.conv(x)
 
 
-class UNET(torch.nn.Module):
-    def __init__(self, input_channels, num_classes, channels = [64//2**3, 128//2**3, 256//2**3, 512//2**3]):
+initial_unet_channels = 8
+
+class UNET(torch.nn.Module):    
+    def __init__(self, input_channels, num_classes, channels = [initial_unet_channels, initial_unet_channels * 2, initial_unet_channels * 4, initial_unet_channels * 8]):
         super(UNET, self).__init__()
         self.pool = torch.nn.MaxPool2d(2, 2)
         self.last_conv = torch.nn.Conv2d(channels[0], num_classes, 1, 1)
@@ -38,7 +40,7 @@ class UNET(torch.nn.Module):
 
         # Decoder
         for channel in reversed(channels):
-            self.up_tconvs.append(torch.nn.ConvTranspose2d(2*channel, 2*channel, 2, 2))
+            self.up_tconvs.append(torch.nn.ConvTranspose2d(2*channel, channel, 2, 2))
             self.up_dconvs.append(DoubleConv2D(2 * channel, channel))
     
     def forward(self, x):
@@ -60,11 +62,17 @@ class UNET(torch.nn.Module):
             skip_con = skip_cons[i]
 
             if x.shape != skip_con.shape:
-                x = tv.transforms.functional.resize(x, size = skip_con.shape[2:]) # only resize h and w
+                skip_con = tv.transforms.functional.resize(skip_con, size = x.shape[2:]) # only resize h and w
 
-            concatenated = torch.cat([x, skip_con], dim = 1) # x.shape = (n_batch, c, h, w)
+
+            x = torch.cat([x, skip_con], dim = 1) # x.shape = (n_batch, c, h, w)
             x = self.up_dconvs[i](x)
 
         # Final convolution
         x = self.last_conv(x)
         return x
+    
+if __name__ == "__main__":
+    x = torch.rand([3, 64, 64])
+    model = UNET(3, 1)
+    summary(model, x.shape)
